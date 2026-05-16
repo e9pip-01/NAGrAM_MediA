@@ -16,20 +16,32 @@ def get_media_info(url):
         return ydl.extract_info(url, download=False)
 
 async def send_animated_text(update: Update, text: str, reply_to_id: int):
-    words = text.split()
-    if not words:
-        return None
+    lines = text.split('\n')
+    current_display = ""
+    msg = None
     
-    current_text = words[0]
-    msg = await update.message.reply_text(current_text, reply_to_message_id=reply_to_id)
-    
-    for word in words[1:]:
-        await asyncio.sleep(0.3)
-        current_text += " " + word
-        try:
-            await msg.edit_text(current_text)
-        except Exception:
-            pass
+    for l_idx, line in enumerate(lines):
+        words = line.split(' ')
+        for w_idx, word in enumerate(words):
+            if not word and w_idx == 0 and len(words) == 1:
+                continue
+            
+            if current_display == "":
+                current_display = word
+            else:
+                if w_idx == 0 and l_idx > 0:
+                    current_display += "\n" + word
+                else:
+                    current_display += " " + word
+            
+            if msg is None:
+                msg = await update.message.reply_text(current_display, reply_to_message_id=reply_to_id)
+            else:
+                await asyncio.sleep(0.1)
+                try:
+                    await msg.edit_text(current_display)
+                except Exception:
+                    pass
     return msg
 
 async def add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id):
@@ -46,7 +58,7 @@ async def add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id):
                 pass
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_animated_text(update, "هلا بيك دز رابط الميديا التريدها", update.message.message_id)
+    await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", update.message.message_id)
     await update.message.reply_text("⚽")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -55,18 +67,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg_id = update.message.message_id
     
     if not (url.startswith("http://") or url.startswith("https://")):
-        await send_animated_text(update, "هلا بيك دز رابط الميديا التريدها", user_msg_id)
+        await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", user_msg_id)
         await update.message.reply_text("⚽")
         return
 
-    msg1 = await send_animated_text(update, "كاعدة اطلع الك معلومات الميديا التريدها", user_msg_id)
+    msg1 = await send_animated_text(update, "كاعدة اطلع الك معلومات الميديا\nالتريدها", user_msg_id)
     msg2 = await update.message.reply_text("⏳")
 
     try:
         loop = asyncio.get_event_loop()
         info = await loop.run_in_executor(None, get_media_info, url)
     except Exception:
-        await send_animated_text(update, "الرابط غير مدعوم او الموقع غير مدعوم", user_msg_id)
+        await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         try:
             await msg1.delete()
@@ -75,7 +87,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    msg3 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي بليز", user_msg_id)
+    msg3 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
     msg4 = await update.message.reply_text("🫦")
 
     async def delete_waiting_messages():
@@ -121,7 +133,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(f)
             return
         except Exception:
-            await send_animated_text(update, "الرابط غير مدعوم او الموقع غير مدعوم", user_msg_id)
+            await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
             await update.message.reply_text("🫧")
             await delete_waiting_messages()
             return
@@ -143,7 +155,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(filename):
             if os.path.getsize(filename) > MAX_SIZE_BYTES:
                 os.remove(filename)
-                await send_animated_text(update, "ماكدر اشيل عير اطول من كسي العفو منك مولاي", user_msg_id)
+                await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
                 await update.message.reply_text("🧸")
                 await delete_waiting_messages()
                 return
@@ -157,11 +169,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
-        await send_animated_text(update, "ماكدر اشيل عير اطول من كسي العفو منك مولاي", user_msg_id)
+        await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
         await update.message.reply_text("🧸")
         await delete_waiting_messages()
     except Exception:
-        await send_animated_text(update, "الرابط غير مدعوم او الموقع غير مدعوم", user_msg_id)
+        await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         await delete_waiting_messages()
 
