@@ -106,8 +106,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
-            'outtmpl': 'downloads/%(id)s_%(index)s.%(ext)s',
+            'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
+            'restrictfilenames': True,
         }
         try:
             download_info = await loop.run_in_executor(executor, download_media, ydl_opts, url)
@@ -145,8 +146,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     ydl_opts = {
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
+        'restrictfilenames': True,
     }
     
     try:
