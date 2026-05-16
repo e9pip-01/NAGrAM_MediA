@@ -71,8 +71,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚽")
         return
 
-    msg1 = await send_animated_text(update, "كاعدة اطلع الك معلومات الميديا\nالتريدها", user_msg_id)
-    msg2 = await update.message.reply_text("⏳")
+    msg2 = await update.message.reply_text("⏳", reply_to_message_id=user_msg_id)
 
     try:
         loop = asyncio.get_event_loop()
@@ -81,7 +80,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         try:
-            await msg1.delete()
             await msg2.delete()
         except Exception:
             pass
@@ -91,7 +89,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg4 = await update.message.reply_text("🫦")
 
     async def delete_waiting_messages():
-        for m in [msg1, msg2, msg3, msg4]:
+        for m in [msg2, msg3, msg4]:
             try:
                 await m.delete()
             except Exception:
