@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
+from moviepy.editor import VideoFileClip
 
 TOKEN = "8775972336:AAGAPoxZd0LdKXtSHO2ADbu_evDWYTlMA2M"
 MAX_SIZE_BYTES = 567 * 1024 * 1024
@@ -21,6 +22,10 @@ def get_media_info(url):
 def download_media(ydl_opts, url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=True)
+
+def extract_audio_from_video(video_path, audio_path):
+    with VideoFileClip(video_path) as video:
+        video.audio.write_audiofile(audio_path, codec='libvorbis')
 
 async def send_animated_text(update: Update, text: str, reply_to_id: int):
     lines = text.split('\n')
@@ -68,9 +73,55 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_msg_id = update.message.message_id
     bot_msg = await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", user_msg_id)
-    await update.message.reply_text("⚽")
+    await update.message.reply_text("⏳")
     if bot_msg:
         asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
+
+async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_msg_id = update.message.message_id
+    
+    msg3 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
+    msg4 = await update.message.reply_text("🫦")
+    
+    video_file = update.message.video or update.message.document
+    
+    video_path = f"downloads/input_{user_msg_id}.mp4"
+    audio_path = f"downloads/voice_{user_msg_id}.ogg"
+    
+    try:
+        new_file = await context.bot.get_file(video_file.file_id)
+        await new_file.download_to_drive(video_path)
+        
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, extract_audio_from_video, video_path, audio_path)
+        
+        if os.path.exists(audio_path):
+            with open(audio_path, 'rb') as voice:
+                sent_voice = await update.message.reply_voice(voice=voice, reply_to_message_id=user_msg_id)
+                asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_voice.message_id))
+                
+        try:
+            await msg3.delete()
+            await msg4.delete()
+        except Exception:
+            pass
+            
+    except Exception:
+        bot_msg = await send_animated_text(update, "حدث خطأ أثناء معالجة الملف", user_msg_id)
+        await update.message.reply_text("🫧")
+        try:
+            await msg3.delete()
+            await msg4.delete()
+        except Exception:
+            pass
+        if bot_msg:
+            asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
+            
+    finally:
+        for p in [video_path, audio_path]:
+            if os.path.exists(p):
+                os.remove(p)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
@@ -79,7 +130,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not (url.startswith("http://") or url.startswith("https://")):
         bot_msg = await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", user_msg_id)
-        await update.message.reply_text("⚽")
+        await update.message.reply_text("⏳")
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
         return
@@ -112,7 +163,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             download_info = await loop.run_in_executor(executor, download_media, ydl_opts, url)
                 
-            from telegram import InputMediaPhoto, InputMediaVideo
+            from telegram import InputMediaDocument
             media_group = []
             files_to_remove = []
             
@@ -123,10 +174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     file_path = ydl.prepare_filename(entry)
                 if os.path.exists(file_path):
                     files_to_remove.append(file_path)
-                    if entry.get('ext') in ['jpg', 'jpeg', 'png', 'webp']:
-                        media_group.append(InputMediaPhoto(open(file_path, 'rb')))
-                    else:
-                        media_group.append(InputMediaVideo(open(file_path, 'rb')))
+                    media_group.append(InputMediaDocument(open(file_path, 'rb')))
             
             if media_group:
                 sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
@@ -173,9 +221,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
                 return
             
-            with open(filename, 'rb') as video:
-                sent_video = await update.message.reply_video(video=video, supports_streaming=True, reply_to_message_id=user_msg_id)
-                bot_msg_id = sent_video.message_id
+            with open(filename, 'rb') as document:
+                sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
+                bot_msg_id = sent_doc.message_id
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
             
             await delete_waiting_messages()
@@ -201,6 +249,8 @@ def main():
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.VIDEO, handle_video_file))
+    app.add_handler(MessageHandler(filters.Document.VIDEO, handle_video_file))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     app.run_polling()
