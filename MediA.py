@@ -92,23 +92,35 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg3 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
     msg4 = await update.message.reply_text("🫦")
     
-    video_file = update.message.video or update.message.document
-    
-    video_path = f"downloads/input_{user_msg_id}.mp4"
-    audio_path = f"downloads/voice_{user_msg_id}.ogg"
+    video_file = update.message.video
+    if not video_file and update.message.document:
+        if update.message.document.mime_type and update.message.document.mime_type.startswith('video/'):
+            video_file = update.message.document
+
+    if not video_file:
+        try:
+            await msg3.delete()
+            await msg4.delete()
+        except Exception:
+            pass
+        return
+
+    video_path = os.path.join("downloads", f"input_{user_msg_id}.mp4")
+    audio_path = os.path.join("downloads", f"voice_{user_msg_id}.ogg")
     
     try:
         new_file = await context.bot.get_file(video_file.file_id)
-        await new_file.download_to_drive(video_path)
+        await new_file.download_to_drive(custom_path=video_path)
         
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(executor, extract_audio_with_ffmpeg, video_path, audio_path)
+        if os.path.exists(video_path):
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(executor, extract_audio_with_ffmpeg, video_path, audio_path)
+            
+            if os.path.exists(audio_path):
+                with open(audio_path, 'rb') as voice:
+                    sent_voice = await update.message.reply_voice(voice=voice, reply_to_message_id=user_msg_id)
+                    asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_voice.message_id))
         
-        if os.path.exists(audio_path):
-            with open(audio_path, 'rb') as voice:
-                sent_voice = await update.message.reply_voice(voice=voice, reply_to_message_id=user_msg_id)
-                asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_voice.message_id))
-                
         try:
             await msg3.delete()
             await msg4.delete()
@@ -116,7 +128,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
             
     except Exception:
-        bot_msg = await send_animated_text(update, "حدث خطأ أثناء استخراج الصوت", user_msg_id)
+        bot_msg = await send_animated_text(update, "اكو مشكله بستلام الفيديو\nاسفة", user_msg_id)
         await update.message.reply_text("🫧")
         try:
             await msg3.delete()
@@ -132,7 +144,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(p)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.video or update.message.document:
+    if update.message.video or (update.message.document and update.message.document.mime_type and update.message.document.mime_type.startswith('video/')):
         return
 
     url = update.message.text.strip() if update.message.text else ""
