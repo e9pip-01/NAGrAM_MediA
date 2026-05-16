@@ -1,1 +1,0 @@
-# NAGrAM_MediA
