@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
-from moviepy.editor import VideoFileClip
+import subprocess
 
 TOKEN = "8775972336:AAGAPoxZd0LdKXtSHO2ADbu_evDWYTlMA2M"
 MAX_SIZE_BYTES = 567 * 1024 * 1024
@@ -23,9 +23,17 @@ def download_media(ydl_opts, url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=True)
 
-def extract_audio_from_video(video_path, audio_path):
-    with VideoFileClip(video_path) as video:
-        video.audio.write_audiofile(audio_path, codec='libvorbis')
+def extract_audio_with_ffmpeg(video_path, audio_path):
+    command = [
+        'ffmpeg', '-y',
+        '-i', video_path,
+        '-vn',
+        '-acodec', 'libopus',
+        '-b:a', '128k',
+        '-vbr', 'on',
+        audio_path
+    ]
+    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 async def send_animated_text(update: Update, text: str, reply_to_id: int):
     lines = text.split('\n')
@@ -94,7 +102,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await new_file.download_to_drive(video_path)
         
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(executor, extract_audio_from_video, video_path, audio_path)
+        await loop.run_in_executor(executor, extract_audio_with_ffmpeg, video_path, audio_path)
         
         if os.path.exists(audio_path):
             with open(audio_path, 'rb') as voice:
@@ -108,7 +116,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
             
     except Exception:
-        bot_msg = await send_animated_text(update, "حدث خطأ أثناء معالجة الملف", user_msg_id)
+        bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         try:
             await msg3.delete()
