@@ -1,6 +1,6 @@
 import os
 import asyncio
-from telegram import Update
+from telegram import Update, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
@@ -52,7 +52,7 @@ async def add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id):
                 await context.bot.set_message_reaction(
                     chat_id=chat_id,
                     message_id=msg_id,
-                    reaction=[{"type": "emoji", "emoji": "🍓"}]
+                    reaction=[ReactionTypeEmoji(emoji="🍓")]
                 )
             except Exception:
                 pass
