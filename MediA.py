@@ -116,7 +116,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
             
     except Exception:
-        bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
+        bot_msg = await send_animated_text(update, "حدث خطأ أثناء استخراج الصوت", user_msg_id)
         await update.message.reply_text("🫧")
         try:
             await msg3.delete()
@@ -132,11 +132,14 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(p)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
+    if update.message.video or update.message.document:
+        return
+
+    url = update.message.text.strip() if update.message.text else ""
     chat_id = update.effective_chat.id
     user_msg_id = update.message.message_id
     
-    if not (url.startswith("http://") or url.startswith("https://")):
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
         bot_msg = await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", user_msg_id)
         await update.message.reply_text("⏳")
         if bot_msg:
