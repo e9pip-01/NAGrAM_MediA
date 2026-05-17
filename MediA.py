@@ -22,13 +22,6 @@ def download_media(ydl_opts, url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=True)
 
-async def remove_audio_ffmpeg(input_path, output_path):
-    cmd = f'ffmpeg -y -i "{input_path}" -an -c:v copy "{output_path}"'
-    process = await asyncio.create_subprocess_shell(
-        cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    await process.communicate()
-
 async def send_animated_text(update: Update, text: str, reply_to_id: int):
     lines = text.split('\n')
     current_display = ""
@@ -138,22 +131,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 bot_msg_id = sent_msgs[0].message_id if sent_msgs else None
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
                 
-                for f_path, s_msg in zip(files_to_remove, sent_msgs):
-                    if f_path.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi')):
-                        dir_name = os.path.dirname(f_path)
-                        base_name = os.path.basename(f_path)
-                        animation_path = os.path.join(dir_name, "mute_" + base_name)
-                        try:
-                            await remove_audio_ffmpeg(f_path, animation_path)
-                            if os.path.exists(animation_path) and os.path.getsize(animation_path) > 0:
-                                with open(animation_path, 'rb') as anim_file:
-                                    await update.message.reply_animation(animation=anim_file, reply_to_message_id=s_msg.message_id)
-                        except Exception:
-                            pass
-                        finally:
-                            if os.path.exists(animation_path):
-                                os.remove(animation_path)
-                
             await delete_waiting_messages()
 
             for f in files_to_remove:
@@ -201,24 +178,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
             
             await delete_waiting_messages()
-            
-            if filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi')):
-                dir_name = os.path.dirname(filename)
-                base_name = os.path.basename(filename)
-                animation_path = os.path.join(dir_name, "mute_" + base_name)
-                try:
-                    await remove_audio_ffmpeg(filename, animation_path)
-                    if os.path.exists(animation_path) and os.path.getsize(animation_path) > 0:
-                        with open(animation_path, 'rb') as anim_file:
-                            await update.message.reply_animation(animation=anim_file, reply_to_message_id=bot_msg_id)
-                except Exception:
-                    pass
-                finally:
-                    if os.path.exists(animation_path):
-                        os.remove(animation_path)
-
-            if os.path.exists(filename):
-                os.remove(filename)
+            os.remove(filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
         bot_msg = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
