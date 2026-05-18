@@ -1,7 +1,8 @@
 import os
 import asyncio
+import glob
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update, ReactionTypeEmoji
+from telegram import Update, ReactionTypeEmoji, InputMediaDocument
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
@@ -28,9 +29,18 @@ async def send_animated_text(update: Update, text: str, reply_to_id: int):
     msg = None
     
     for l_idx, line in enumerate(lines):
-        words = line.split(' ')
+        words = []
+        current_word = ""
+        for char in line:
+            current_word += char
+            if char == ' ' or char == 'ء':
+                words.append(current_word)
+                current_word = ""
+        if current_word:
+            words.append(current_word)
+            
         for w_idx, word in enumerate(words):
-            if not word and w_idx == 0 and len(words) == 1:
+            if not word.strip() and w_idx == 0 and len(words) == 1:
                 continue
             
             if current_display == "":
@@ -39,7 +49,7 @@ async def send_animated_text(update: Update, text: str, reply_to_id: int):
                 if w_idx == 0 and l_idx > 0:
                     current_display += "\n" + word
                 else:
-                    current_display += " " + word
+                    current_display += word
             
             if msg is None:
                 msg = await update.message.reply_text(current_display, reply_to_message_id=reply_to_id)
@@ -67,8 +77,8 @@ async def add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_msg_id = update.message.message_id
-    bot_msg = await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", user_msg_id)
-    await update.message.reply_text("⏳")
+    bot_msg = await send_animated_text(update, "هلا مولاي زبك يالون ههع يلا راح امص\nعقءعقءعقء اهعاعقءعقءعاهعقء", user_msg_id)
+    await update.message.reply_text("👅")
     if bot_msg:
         asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
 
@@ -78,8 +88,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg_id = update.message.message_id
     
     if not (url.startswith("http://") or url.startswith("https://")):
-        bot_msg = await send_animated_text(update, "هلا بيك دز رابط الميديا\nالتريدها", user_msg_id)
-        await update.message.reply_text("⏳")
+        bot_msg = await send_animated_text(update, "هلا مولاي زبك يالون ههع يلا راح امص\nعقءعقءعقء اهعاعقءعقءعاهعقء", user_msg_id)
+        await update.message.reply_text("👅")
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
         return
@@ -106,6 +116,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',
             'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
             'restrictfilenames': True,
@@ -113,8 +124,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             download_info = await loop.run_in_executor(executor, download_media, ydl_opts, url)
                 
-            from telegram import InputMediaDocument
             media_group = []
+            opened_files = []
             files_to_remove = []
             
             for entry in download_info.get('entries', []):
@@ -122,9 +133,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     file_path = ydl.prepare_filename(entry)
-                if os.path.exists(file_path):
-                    files_to_remove.append(file_path)
-                    media_group.append(InputMediaDocument(open(file_path, 'rb')))
+                
+                base_name = os.path.splitext(file_path)[0]
+                matching_files = glob.glob(f"{base_name}.*")
+                
+                if matching_files:
+                    real_file_path = matching_files[0]
+                    files_to_remove.append(real_file_path)
+                    f = open(real_file_path, 'rb')
+                    opened_files.append(f)
+                    media_group.append(InputMediaDocument(f))
             
             if media_group:
                 sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
@@ -133,6 +151,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             await delete_waiting_messages()
 
+            for f in opened_files:
+                f.close()
             for f in files_to_remove:
                 if os.path.exists(f):
                     os.remove(f)
@@ -146,6 +166,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
         'restrictfilenames': True,
@@ -158,13 +179,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             filename = ydl.prepare_filename(download_info)
             
-        if not os.path.exists(filename):
-            ext = download_info.get('ext', 'mp4')
-            filename = os.path.splitext(filename)[0] + f".{ext}"
+        base_name = os.path.splitext(filename)[0]
+        matching_files = glob.glob(f"{base_name}.*")
 
-        if os.path.exists(filename):
-            if os.path.getsize(filename) > MAX_SIZE_BYTES:
-                os.remove(filename)
+        if matching_files:
+            real_filename = matching_files[0]
+
+            if os.path.getsize(real_filename) > MAX_SIZE_BYTES:
+                os.remove(real_filename)
                 bot_msg = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
                 await update.message.reply_text("🧸")
                 await delete_waiting_messages()
@@ -172,13 +194,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
                 return
             
-            with open(filename, 'rb') as document:
+            with open(real_filename, 'rb') as document:
                 sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
                 bot_msg_id = sent_doc.message_id
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
             
             await delete_waiting_messages()
-            os.remove(filename)
+            os.remove(real_filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
         bot_msg = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
