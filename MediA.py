@@ -6,7 +6,7 @@ from telegram import Update, ReactionTypeEmoji, InputMediaDocument
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-TOKEN = "8775972336:AAGAPoxZd0LdKXtSHO2ADbu_evDWYTlMA2M"
+TOKEN = os.getenv("BOT_TOKEN")
 MAX_SIZE_BYTES = 567 * 1024 * 1024
 
 executor = ThreadPoolExecutor(max_workers=20)
@@ -218,6 +218,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
+        
+    if not TOKEN:
+        return
         
     app = Application.builder().token(TOKEN).build()
     
