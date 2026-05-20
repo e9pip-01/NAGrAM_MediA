@@ -12,16 +12,27 @@ MAX_SIZE_BYTES = 567 * 1024 * 1024
 
 executor = ThreadPoolExecutor(max_workers=20)
 
-def get_media_info(url):
-    ydl_opts = {
-        'extract_flat': False,
-        'skip_download': True,
+YDL_OPTIONS = {
+    'extract_flat': False,
+    'skip_download': True,
+    'quiet': True,
+    'no_warnings': True,
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+}
+
+def get_media_info(url):
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         return ydl.extract_info(url, download=False)
 
 def download_media(ydl_opts, url):
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    opts = {**ydl_opts, **YDL_OPTIONS}
+    opts['skip_download'] = False
+    with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(url, download=True)
 
 async def send_animated_text(update: Update, text: str, reply_to_id: int):
@@ -113,37 +124,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
         return
 
-    if 'requested_downloads' in info or (info.get('formats') is None and 'entries' not in info):
-        if info.get('requested_downloads'):
+    all_images = []
+    if info:
+        if 'requested_downloads' in info:
             all_images = [f.get('url') for f in info['requested_downloads'] if f.get('ext') in ['jpg', 'jpeg', 'png', 'webp'] or 'image' in f.get('format_id', '')]
-        else:
-            all_images = []
-            
+        
         if not all_images and 'entries' in info:
             for entry in info['entries']:
-                if entry and 'url' in entry:
-                    all_images.append(entry['url'])
-                    
-        if all_images:
-            try:
-                media_group = [InputMediaPhoto(img_url) for img_url in all_images[:10]]
-                if media_group:
-                    sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
-                    bot_msg_id = sent_msgs[0].message_id if sent_msgs else None
-                    asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
-                return
-            except Exception:
-                pass
+                if entry:
+                    if entry.get('url') and (entry.get('ext') in ['jpg', 'jpeg', 'png', 'webp'] or 'image' in entry.get('format_id', '')):
+                        all_images.append(entry['url'])
+                    elif 'requested_downloads' in entry:
+                        for f in entry['requested_downloads']:
+                            if f.get('url'):
+                                all_images.append(f['url'])
+
+    if all_images:
+        try:
+            media_group = [InputMediaPhoto(img_url) for img_url in all_images[:10]]
+            if media_group:
+                sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
+                bot_msg_id = sent_msgs[0].message_id if sent_msgs else None
+                asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
+            return
+        except Exception:
+            pass
 
     msg3, msg4 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
 
-    async def delete_waiting_messages():
-        for m in [msg3, msg4]:
-            if m:
-                try:
-                    await m.delete()
-                except Exception:
-                    pass
+    async def reset_waiting_message():
+        if msg3:
+            try:
+                await msg3.edit_text("دانفذ طلبك انتظر مولاي\nبليز")
+            except Exception:
+                pass
 
     def progress_hook(d):
         if d['status'] == 'downloading':
@@ -156,11 +170,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 percent_str = "جاري الحساب..."
             
             clean_str = re.sub(r'\x1b\[[0-9;]*m', '', d.get('_percent_str', percent_str)).strip()
-            new_text = f"دانفذ طلبك انتظر مولاي\nبليز - {clean_str}"
+            
+            if "100" in clean_str:
+                new_text = "دانفذ طلبك انتظر مولاي\nبليز"
+            else:
+                new_text = f"دانفذ طلبك انتظر مولاي\nبليز - {clean_str}"
             
             try:
                 loop.call_soon_threadsafe(
                     lambda: asyncio.create_task(msg3.edit_text(new_text))
+                )
+            except Exception:
+                pass
+        elif d['status'] == 'finished':
+            try:
+                loop.call_soon_threadsafe(
+                    lambda: asyncio.create_task(msg3.edit_text("دانفذ طلبك انتظر مولاي\nبليز"))
                 )
             except Exception:
                 pass
@@ -197,12 +222,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     media_group.append(InputMediaDocument(f))
             
             if media_group:
+                await reset_waiting_message()
                 sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
                 bot_msg_id = sent_msgs[0].message_id if sent_msgs else None
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
                 
-            await delete_waiting_messages()
-
             for f in opened_files:
                 f.close()
             for f in files_to_remove:
@@ -212,7 +236,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             bot_msg, _ = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
             await update.message.reply_text("🫧")
-            await delete_waiting_messages()
+            await reset_waiting_message()
             if bot_msg:
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
             return
@@ -242,29 +266,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(real_filename)
                 bot_msg, _ = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
                 await update.message.reply_text("🧸")
-                await delete_waiting_messages()
+                await reset_waiting_message()
                 if bot_msg:
                     asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
                 return
             
+            await reset_waiting_message()
             with open(real_filename, 'rb') as document:
                 sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
                 bot_msg_id = sent_doc.message_id
                 asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
             
-            await delete_waiting_messages()
             os.remove(real_filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
         bot_msg, _ = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
         await update.message.reply_text("🧸")
-        await delete_waiting_messages()
+        await reset_waiting_message()
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
     except Exception:
         bot_msg, _ = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
-        await delete_waiting_messages()
+        await reset_waiting_message()
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
 
