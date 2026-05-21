@@ -39,17 +39,38 @@ async def send_animated_text(update: Update, text: str, reply_to_id: int):
         if current_word:
             words.append(current_word)
             
-        for w_idx, word in enumerate(words):
-            if not word.strip() and w_idx == 0 and len(words) == 1:
+        chunks = []
+        skip = False
+        for i in range(len(words)):
+            if skip:
+                skip = False
+                continue
+            
+            current_w = words[i]
+            if 'ء' in current_w or current_w.strip() == 'ء':
+                chunks.append(current_w)
+            else:
+                if i + 1 < len(words):
+                    next_w = words[i+1]
+                    if 'ء' in next_w or next_w.strip() == 'ء':
+                        chunks.append(current_w)
+                    else:
+                        chunks.append(current_w + next_w)
+                        skip = True
+                else:
+                    chunks.append(current_w)
+                    
+        for c_idx, chunk in enumerate(chunks):
+            if not chunk.strip() and c_idx == 0 and len(chunks) == 1:
                 continue
             
             if current_display == "":
-                current_display = word
+                current_display = chunk
             else:
-                if w_idx == 0 and l_idx > 0:
-                    current_display += "\n" + word
+                if c_idx == 0 and l_idx > 0:
+                    current_display += "\n" + chunk
                 else:
-                    current_display += word
+                    current_display += chunk
             
             if msg is None:
                 msg = await update.message.reply_text(current_display, reply_to_message_id=reply_to_id)
@@ -117,7 +138,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
-            'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s_%(index)s.%(ext)s',
+            'outtmpl': 'downloads/%(uploader,channel_id,channel)s - %(title,id)s_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
             'restrictfilenames': True,
         }
@@ -167,7 +188,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s.%(ext)s',
+        'outtmpl': 'downloads/%(uploader,channel_id,channel)s - %(title,id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
         'restrictfilenames': True,
     }
@@ -230,4 +251,4 @@ def main():
     app.run_polling()
 
 if __name__ == '__main__':
-    main()
+    main() 
