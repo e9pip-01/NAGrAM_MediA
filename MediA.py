@@ -159,13 +159,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg3, msg4 = await send_animated_text(update, context, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
 
-    async def reset_waiting_message():
-        if msg3:
-            try:
-                await msg3.edit_text("دانفذ طلبك انتظر مولاي\nبليز")
-            except Exception:
-                pass
-
     def progress_hook(d):
         if d['status'] == 'downloading':
             try:
@@ -233,7 +226,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     opened_files.append(f)
                     media_group.append(InputMediaDocument(f))
             
-            await reset_waiting_message()
             await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
 
             if media_group:
@@ -248,7 +240,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(f)
             return
         except Exception:
-            await reset_waiting_message()
             bot_msg, _ = await send_animated_text(update, context, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
             await update.message.reply_text("🫧")
             if bot_msg:
@@ -278,14 +269,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if os.path.getsize(real_filename) > MAX_SIZE_BYTES:
                 os.remove(real_filename)
-                await reset_waiting_message()
                 bot_msg, _ = await send_animated_text(update, context, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
                 await update.message.reply_text("🧸")
                 if bot_msg:
                     asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
                 return
             
-            await reset_waiting_message()
             await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
             with open(real_filename, 'rb') as document:
                 sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
@@ -295,13 +284,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(real_filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
-        await reset_waiting_message()
         bot_msg, _ = await send_animated_text(update, context, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
         await update.message.reply_text("🧸")
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
     except Exception:
-        await reset_waiting_message()
         bot_msg, _ = await send_animated_text(update, context, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         if bot_msg:
