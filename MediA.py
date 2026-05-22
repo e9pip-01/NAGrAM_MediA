@@ -1,10 +1,8 @@
 import os
 import asyncio
 import glob
-import mimetypes
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update, ReactionTypeEmoji, InputMediaDocument
-from telegram.constants import ChatAction
+from telegram import Update, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
@@ -25,10 +23,7 @@ def download_media(ydl_opts, url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=True)
 
-async def send_animated_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, reply_to_id: int):
-    chat_id = update.effective_chat.id
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-    
+async def send_animated_text(update: Update, text: str, reply_to_id: int):
     lines = text.split('\n')
     current_display = ""
     msg = None
@@ -44,38 +39,25 @@ async def send_animated_text(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if current_word:
             words.append(current_word)
             
-        chunks = []
-        skip = False
-        for i in range(len(words)):
-            if skip:
-                skip = False
-                continue
-            
-            current_w = words[i]
-            if 'ء' in current_w or current_w.strip() == 'ء':
-                chunks.append(current_w)
-            else:
-                if i + 1 < len(words):
-                    next_w = words[i+1]
-                    if 'ء' in next_w or next_w.strip() == 'ء':
-                        chunks.append(current_w)
-                    else:
-                        chunks.append(current_w + next_w)
-                        skip = True
-                else:
-                    chunks.append(current_w)
-                    
-        for c_idx, chunk in enumerate(chunks):
-            if not chunk.strip() and c_idx == 0 and len(chunks) == 1:
+        paired_words = []
+        temp_pair = ""
+        for w_idx, word in enumerate(words):
+            temp_pair += word
+            if (w_idx + 1) % 2 == 0 or (w_idx + 1) == len(words):
+                paired_words.append(temp_pair)
+                temp_pair = ""
+                
+        for p_idx, pair in enumerate(paired_words):
+            if not pair.strip() and p_idx == 0 and len(paired_words) == 1:
                 continue
             
             if current_display == "":
-                current_display = chunk
+                current_display = pair
             else:
-                if c_idx == 0 and l_idx > 0:
-                    current_display += "\n" + chunk
+                if p_idx == 0 and l_idx > 0:
+                    current_display += "\n" + pair
                 else:
-                    current_display += chunk
+                    current_display += pair
             
             if msg is None:
                 msg = await update.message.reply_text(current_display, reply_to_message_id=reply_to_id)
@@ -103,8 +85,7 @@ async def add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_msg_id = update.message.message_id
-    bot_msg = await send_animated_text(update, context, "هلا مولاي زبك يالون ههع يلا راح امص\nعقءعقءعقء اهعاعقءعقءعاهعقء", user_msg_id)
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    bot_msg = await send_animated_text(update, "هلا مولاي زبك يالون ههع يلا راح امص\nعقءعقءعقء اهعاعقءعقءعاهعقء", user_msg_id)
     await update.message.reply_text("👅")
     if bot_msg:
         asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
@@ -115,27 +96,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_msg_id = update.message.message_id
     
     if not (url.startswith("http://") or url.startswith("https://")):
-        bot_msg = await send_animated_text(update, context, "هلا مولاي زبك يالون ههع يلا راح امص\nعقءعقءعقء اهعاعقءعقءعاهعقء", user_msg_id)
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        bot_msg = await send_animated_text(update, "هلا مولاي زبك يالون ههع يلا راح امص\nعقءعقءعقء اهعاعقءعقءعاهعقء", user_msg_id)
         await update.message.reply_text("👅")
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
         return
 
     try:
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         loop = asyncio.get_event_loop()
         info = await loop.run_in_executor(executor, get_media_info, url)
     except Exception:
-        bot_msg = await send_animated_text(update, context, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
         return
 
-    msg3 = await send_animated_text(update, context, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
-    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    msg3 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
     msg4 = await update.message.reply_text("🫦")
 
     async def delete_waiting_messages():
@@ -148,16 +125,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
-            'outtmpl': 'downloads/%(uploader,channel_id,channel)s - %(title,id)s_%(index)s.%(ext)s',
+            'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
             'restrictfilenames': True,
         }
         try:
             download_info = await loop.run_in_executor(executor, download_media, ydl_opts, url)
-                
-            media_group = []
-            opened_files = []
-            files_to_remove = []
+            await delete_waiting_messages()
             
             for entry in download_info.get('entries', []):
                 if not entry:
@@ -170,28 +144,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if matching_files:
                     real_file_path = matching_files[0]
-                    files_to_remove.append(real_file_path)
-                    f = open(real_file_path, 'rb')
-                    opened_files.append(f)
-                    media_group.append(InputMediaDocument(f))
-            
-            if media_group:
-                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
-                sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
-                bot_msg_id = sent_msgs[0].message_id if sent_msgs else None
-                asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
-                
-            await delete_waiting_messages()
-
-            for f in opened_files:
-                f.close()
-            for f in files_to_remove:
-                if os.path.exists(f):
-                    os.remove(f)
+                    
+                    if os.path.getsize(real_file_path) > MAX_SIZE_BYTES:
+                        if os.path.exists(real_file_path):
+                            os.remove(real_file_path)
+                        continue
+                    
+                    try:
+                        with open(real_file_path, 'rb') as document:
+                            sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
+                            asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_doc.message_id))
+                    except Exception:
+                        pass
+                    finally:
+                        if os.path.exists(real_file_path):
+                            os.remove(real_file_path)
             return
         except Exception:
-            bot_msg = await send_animated_text(update, context, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
             await update.message.reply_text("🫧")
             await delete_waiting_messages()
             if bot_msg:
@@ -200,7 +170,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloads/%(uploader,channel_id,channel)s - %(title,id)s.%(ext)s',
+        'outtmpl': 'downloads/%%(uploader,channel)s - %(title,id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
         'restrictfilenames': True,
     }
@@ -220,27 +190,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if os.path.getsize(real_filename) > MAX_SIZE_BYTES:
                 os.remove(real_filename)
-                bot_msg = await send_animated_text(update, context, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
-                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                bot_msg = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
                 await update.message.reply_text("🧸")
                 await delete_waiting_messages()
                 if bot_msg:
                     asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
                 return
             
-            mime_type, _ = mimetypes.guess_type(real_filename)
-            if mime_type:
-                if mime_type.startswith('video/'):
-                    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_VIDEO)
-                elif mime_type.startswith('image/'):
-                    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_PHOTO)
-                elif mime_type.startswith('audio/'):
-                    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_AUDIO)
-                else:
-                    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
-            else:
-                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_DOCUMENT)
-                
             with open(real_filename, 'rb') as document:
                 sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
                 bot_msg_id = sent_doc.message_id
@@ -250,15 +206,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(real_filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
-        bot_msg = await send_animated_text(update, context, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        bot_msg = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
         await update.message.reply_text("🧸")
         await delete_waiting_messages()
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
     except Exception:
-        bot_msg = await send_animated_text(update, context, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
-        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
         await update.message.reply_text("🫧")
         await delete_waiting_messages()
         if bot_msg:
