@@ -125,9 +125,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
-            'outtmpl': 'downloads/%(uploader,channel)s - %(title,id)s_%(index)s.%(ext)s',
+            'outtmpl': 'downloads/%(channel)s - %(title,id)s_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
-            'restrictfilenames': True,
+            'windowsfilenames': True,
+            'trim_file_name': 100,
         }
         try:
             download_info = await loop.run_in_executor(executor, download_media, ydl_opts, url)
@@ -170,9 +171,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloads/%%(uploader,channel)s - %(title,id)s.%(ext)s',
+        'outtmpl': 'downloads/%%(channel)s - %(title,id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
-        'restrictfilenames': True,
+        'windowsfilenames': True,
+        'trim_file_name': 100,
     }
     
     try:
