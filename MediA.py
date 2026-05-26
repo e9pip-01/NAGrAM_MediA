@@ -171,7 +171,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloads/%%(channel)s - %(title,id)s.%(ext)s',
+        'outtmpl': 'downloads/%(channel)s - %(title,id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
         'windowsfilenames': True,
         'trim_file_name': 100,
