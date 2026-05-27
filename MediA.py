@@ -1,8 +1,9 @@
 import os
 import asyncio
 import glob
+import re
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update, ReactionTypeEmoji
+from telegram import Update, ReactionTypeEmoji, InputMediaDocument
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
@@ -122,10 +123,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
+    title_str = info.get('title', '') or ''
+    
+    cleaned_title = re.sub(r'#\w+', '', title_str)
+    cleaned_title = cleaned_title.replace('_', ' ')
+    cleaned_title = re.sub(r'\s+', ' ', cleaned_title).strip()
+    
+    if not cleaned_title or len(cleaned_title) < 3 or title_str.count('_') > 2:
+        target_suffix = '%(id)s'
+    else:
+        target_suffix = '%(title)s'
+
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
-            'outtmpl': 'downloads/%(channel)s - %(title,id)s_%(index)s.%(ext)s',
+            'outtmpl': f'downloads/%(channel)s - {target_suffix}_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
             'windowsfilenames': True,
             'trim_file_name': 100,
@@ -133,6 +145,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             download_info = await loop.run_in_executor(executor, download_media, ydl_opts, url)
             await delete_waiting_messages()
+            
+            media_group = []
+            files_to_remove = []
             
             for entry in download_info.get('entries', []):
                 if not entry:
@@ -151,15 +166,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             os.remove(real_file_path)
                         continue
                     
-                    try:
-                        with open(real_file_path, 'rb') as document:
-                            sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
-                            asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_doc.message_id))
-                    except Exception:
-                        pass
-                    finally:
-                        if os.path.exists(real_file_path):
-                            os.remove(real_file_path)
+                    f = open(real_file_path, 'rb')
+                    media_group.append(InputMediaDocument(media=f))
+                    files_to_remove.append((real_file_path, f))
+            
+            if media_group:
+                try:
+                    sent_msgs = await update.message.reply_media_group(media=media_group, reply_to_message_id=user_msg_id)
+                    if sent_msgs:
+                        asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_msgs[0].message_id))
+                except Exception:
+                    pass
+                finally:
+                    for path, f_obj in files_to_remove:
+                        f_obj.close()
+                        if os.path.exists(path):
+                            os.remove(path)
             return
         except Exception:
             bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
@@ -171,7 +193,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloads/%(channel)s - %(title,id)s.%(ext)s',
+        'outtmpl': f'downloads/%(channel)s - {target_suffix}.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
         'windowsfilenames': True,
         'trim_file_name': 100,
