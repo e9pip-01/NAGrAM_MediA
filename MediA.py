@@ -1,10 +1,11 @@
 import os
 import asyncio
 import glob
-import re
+import subprocess
+import json
 from concurrent.futures import ThreadPoolExecutor
-from telegram import Update, ReactionTypeEmoji, InputMediaDocument
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, ReactionTypeEmoji, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaVideo, InputMediaPhoto
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import yt_dlp
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -23,6 +24,17 @@ def get_media_info(url):
 def download_media(ydl_opts, url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=True)
+
+def get_video_dimensions(file_path):
+    try:
+        cmd = f'ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of json "{file_path}"'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        data = json.loads(result.stdout)
+        if 'streams' in data and len(data['streams']) > 0:
+            return data['streams'][0].get('width'), data['streams'][0].get('height')
+    except Exception:
+        pass
+    return None, None
 
 async def send_animated_text(update: Update, text: str, reply_to_id: int):
     lines = text.split('\n')
@@ -61,7 +73,10 @@ async def send_animated_text(update: Update, text: str, reply_to_id: int):
                     current_display += pair
             
             if msg is None:
-                msg = await update.message.reply_text(current_display, reply_to_message_id=reply_to_id)
+                if update.message:
+                    msg = await update.message.reply_text(current_display, reply_to_message_id=reply_to_id)
+                else:
+                    msg = await update.callback_query.message.reply_text(current_display, reply_to_message_id=reply_to_id)
             else:
                 await asyncio.sleep(0.1)
                 try:
@@ -123,21 +138,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    title_str = info.get('title', '') or ''
-    
-    cleaned_title = re.sub(r'#\w+', '', title_str)
-    cleaned_title = cleaned_title.replace('_', ' ')
-    cleaned_title = re.sub(r'\s+', ' ', cleaned_title).strip()
-    
-    if not cleaned_title or len(cleaned_title) < 3 or title_str.count('_') > 2:
-        target_suffix = '%(id)s'
-    else:
-        target_suffix = '%(title)s'
-
     if 'entries' in info and not info.get('formats'):
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
-            'outtmpl': f'downloads/%(channel)s - {target_suffix}_%(index)s.%(ext)s',
+            'outtmpl': 'downloads/%(channel)s - %(id)s_%(index)s.%(ext)s',
             'max_filesize': MAX_SIZE_BYTES,
             'windowsfilenames': True,
             'trim_file_name': 100,
@@ -156,10 +160,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     file_path = ydl.prepare_filename(entry)
                 
                 base_name = os.path.splitext(file_path)[0]
-                matching_files = glob.glob(f"{base_name}.*")
+                matching_files = [f for f in glob.glob(f"{base_name}.*") if not f.endswith('.part') and not f.endswith('.ytdl')]
                 
                 if matching_files:
                     real_file_path = matching_files[0]
+                    ext = os.path.splitext(real_file_path)[1].lower()
                     
                     if os.path.getsize(real_file_path) > MAX_SIZE_BYTES:
                         if os.path.exists(real_file_path):
@@ -167,7 +172,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         continue
                     
                     f = open(real_file_path, 'rb')
-                    media_group.append(InputMediaDocument(media=f))
+                    if ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp']:
+                        media_group.append(InputMediaPhoto(media=f))
+                    else:
+                        v_w, v_h = get_video_dimensions(real_file_path)
+                        media_group.append(InputMediaVideo(media=f, width=v_w, height=v_h, has_spoiler=True))
                     files_to_remove.append((real_file_path, f))
             
             if media_group:
@@ -193,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
-        'outtmpl': f'downloads/%(channel)s - {target_suffix}.%(ext)s',
+        'outtmpl': 'downloads/%(channel)s - %(id)s.%(ext)s',
         'max_filesize': MAX_SIZE_BYTES,
         'windowsfilenames': True,
         'trim_file_name': 100,
@@ -207,10 +216,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = ydl.prepare_filename(download_info)
             
         base_name = os.path.splitext(filename)[0]
-        matching_files = glob.glob(f"{base_name}.*")
+        matching_files = [f for f in glob.glob(f"{base_name}.*") if not f.endswith('.part') and not f.endswith('.ytdl')]
 
         if matching_files:
             real_filename = matching_files[0]
+            ext = os.path.splitext(real_filename)[1].lower()
 
             if os.path.getsize(real_filename) > MAX_SIZE_BYTES:
                 os.remove(real_filename)
@@ -221,13 +231,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
                 return
             
-            with open(real_filename, 'rb') as document:
-                sent_doc = await update.message.reply_document(document=document, reply_to_message_id=user_msg_id)
-                bot_msg_id = sent_doc.message_id
-                asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg_id))
+            if ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp']:
+                with open(real_filename, 'rb') as photo:
+                    sent_msg = await update.message.reply_photo(photo=photo, reply_to_message_id=user_msg_id)
+                    asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_msg.message_id))
+                os.remove(real_filename)
+            else:
+                keyboard = [[InlineKeyboardButton("ستيكر", callback_data=f"gif_{url}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                v_w, v_h = get_video_dimensions(real_filename)
+                
+                with open(real_filename, 'rb') as video:
+                    sent_msg = await update.message.reply_video(video=video, width=v_w, height=v_h, reply_to_message_id=user_msg_id, reply_markup=reply_markup, has_spoiler=True)
+                    asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_msg.message_id))
+                os.remove(real_filename)
             
             await delete_waiting_messages()
-            os.remove(real_filename)
             
     except yt_dlp.utils.MaxFileSizeReached:
         bot_msg = await send_animated_text(update, "ماكدر اشيل عير اطول من كسي\nالعفو منك مولاي", user_msg_id)
@@ -242,6 +262,63 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if bot_msg:
             asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
 
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    chat_id = update.effective_chat.id
+    user_msg_id = query.message.reply_to_message.message_id if query.message.reply_to_message else query.message.message_id
+
+    if data.startswith("gif_"):
+        original_url = data[4:]
+        
+        msg3 = await send_animated_text(update, "دانفذ طلبك انتظر مولاي\nبليز", user_msg_id)
+        msg4 = await query.message.reply_text("🫦")
+
+        async def delete_waiting_messages():
+            for m in [msg3, msg4]:
+                try:
+                    await m.delete()
+                except Exception:
+                    pass
+
+        ydl_opts = {
+            'format': 'bestvideo',
+            'outtmpl': 'downloads/gif_%(channel)s - %(id)s.%(ext)s',
+            'max_filesize': MAX_SIZE_BYTES,
+            'windowsfilenames': True,
+            'trim_file_name': 100,
+        }
+        
+        try:
+            loop = asyncio.get_event_loop()
+            download_info = await loop.run_in_executor(executor, download_media, ydl_opts, original_url)
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                filename = ydl.prepare_filename(download_info)
+                
+            base_name = os.path.splitext(filename)[0]
+            matching_files = [f for f in glob.glob(f"{base_name}.*") if not f.endswith('.part') and not f.endswith('.ytdl')]
+
+            if matching_files:
+                real_filename = matching_files[0]
+                
+                g_w, g_h = get_video_dimensions(real_filename)
+                
+                with open(real_filename, 'rb') as anim:
+                    sent_anim = await query.message.reply_animation(animation=anim, width=g_w, height=g_h, reply_to_message_id=user_msg_id, has_spoiler=True)
+                    asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, sent_anim.message_id))
+                
+                os.remove(real_filename)
+                await delete_waiting_messages()
+        except Exception:
+            bot_msg = await send_animated_text(update, "الرابط غير مدعوم او الموقع\nغير مدعوم", user_msg_id)
+            await query.message.reply_text("🫧")
+            await delete_waiting_messages()
+            if bot_msg:
+                asyncio.create_task(add_strawberry_reactions(context, chat_id, user_msg_id, bot_msg.message_id))
+
 def main():
     if not os.path.exists('downloads'):
         os.makedirs('downloads')
@@ -253,6 +330,7 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CallbackQueryHandler(handle_callback))
     
     app.run_polling()
 
